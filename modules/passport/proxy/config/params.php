@@ -31,12 +31,16 @@ return [
             '/users',
             // Получить свои согласия
             '/users/{id}/accepts',
+            // Получить аватарку/пользовательский файл
+            '/storage/files/{id}/download',
         ],
         'POST' => [
+            // Пользователь
+            '/users/{id}/update',
             // Пользовательские контакты
-            '/user-contacts/{id}',
+            '/user-contacts',
             // Пользователськие образования
-            '/user-educations/{id}',
+            '/user-educations',
         ],
         'PUT' => [
             // Пользовательские контакты
