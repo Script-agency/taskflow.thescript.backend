@@ -40,6 +40,6 @@ return [
     ],
     'project-rbac' => [
         'class' => 'modules\\projectRbac\\Module',
-        'controllerNamespace' => 'modules\\project-rbac\\presentation\\controller',
+        'controllerNamespace' => 'modules\\projectRbac\\presentation\\controller',
     ],
 ];
