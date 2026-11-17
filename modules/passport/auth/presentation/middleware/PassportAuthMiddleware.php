@@ -101,7 +101,7 @@ final class PassportAuthMiddleware
             $this->rejectUnauthorized('Access token was issued for another audience');
         }
 
-        $local_user_id = $this->userRepository->findByPassportId(new UserId($sub))->getId()->value();
+        $local_user_id = $this->userRepository->findByPassportId(new UserId((int)$sub))->getId()->value();
 
         Yii::$app->user->setIdentity(new YiiIdentity(
             (string)$local_user_id,
