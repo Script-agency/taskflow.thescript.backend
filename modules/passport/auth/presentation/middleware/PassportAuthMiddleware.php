@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace modules\passport\auth\presentation\middleware;
 
+use core\application\port\IUserRepository;
+use core\domain\exception\UserNotFoundException;
+use core\domain\exception\ValidationException;
+use core\domain\valueObject\UserId;
 use core\security\YiiIdentity;
 use modules\passport\auth\application\port\PassportAuthPort;
 use RuntimeException;
@@ -19,6 +23,7 @@ final class PassportAuthMiddleware
      * @param array<int, string> $publicRoutes
      */
     public function __construct(
+        private readonly IUserRepository $userRepository,
         private readonly PassportAuthPort $passport,
         private readonly array $publicRoutes,
         private readonly string $publicKeyPath,
@@ -31,6 +36,8 @@ final class PassportAuthMiddleware
     /**
      * @throws InvalidConfigException
      * @throws UnauthorizedHttpException
+     * @throws ValidationException
+     * @throws UserNotFoundException
      */
     public function handle(): void
     {
@@ -94,8 +101,10 @@ final class PassportAuthMiddleware
             $this->rejectUnauthorized('Access token was issued for another audience');
         }
 
+        $local_user_id = $this->userRepository->findByPassportId(new UserId($sub))->getId()->value();
+
         Yii::$app->user->setIdentity(new YiiIdentity(
-            (string)$sub,
+            (string)$local_user_id,
             $clientId ?? (string)$audience,
             $tokenId,
             array_values(array_map('strval', $scopes)),

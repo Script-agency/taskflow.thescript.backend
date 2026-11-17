@@ -20,6 +20,11 @@ interface IUserRepository
     /**
      * @throws UserNotFoundException
      */
+    public function findByPassportId(UserId $id): User;
+
+    /**
+     * @throws UserNotFoundException
+     */
     public function findByEmail(Email $email): User;
 
     /**

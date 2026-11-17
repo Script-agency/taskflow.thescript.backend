@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use core\application\handler\SyncUserHandler;
+use core\application\port\IUserRepository;
 use modules\passport\auth\application\handler\HandleSsoCallbackHandler;
 use modules\passport\auth\application\handler\InitiateSsoLoginHandler;
 use modules\passport\auth\application\port\PassportAuthPort;
@@ -54,6 +55,7 @@ $container->set(HandleSsoCallbackHandler::class, static fn (): HandleSsoCallback
 
 $container->set(PassportAuthMiddleware::class, static function () use ($params): PassportAuthMiddleware {
     return new PassportAuthMiddleware(
+        Yii::$container->get(IUserRepository::class),
         Yii::$container->get(PassportAuthPort::class),
         $params['public_routes'],
         $params['oauth2_public_key_path'],

@@ -46,6 +46,24 @@ class DbUserRepository implements IUserRepository
      * @throws UserNotFoundException
      * @throws ValidationException
      */
+    public function findByPassportId(UserId $id): User
+    {
+        $row = (new Query())
+            ->from(UserAR::tableName())
+            ->where(['passport_id' => $id->value()])
+            ->one();
+
+        if (!$row) {
+            throw new UserNotFoundException('User not found.');
+        }
+
+        return $this->hydrate($row, true);
+    }
+
+    /**
+     * @throws UserNotFoundException
+     * @throws ValidationException
+     */
     public function findByEmail(Email $email): User
     {
         $row = (new Query())
