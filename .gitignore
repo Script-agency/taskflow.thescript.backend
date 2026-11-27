@@ -45,3 +45,9 @@ stats*
 
 #linter
 .php-cs-fixer.cache
+
+# local certs
+*.pem
+
+# Сертификаты и ключи безопасности внешних сервисов
+/keys
