@@ -11,7 +11,7 @@ declare(strict_types=1);
  *     )
  * )
  * @OA\Server(
- *     url="http://localhost:8080",
+ *     url="https://local.taskflow.thescript.agency",
  *     description="API dev server"
  * )
  * @OA\Server(
