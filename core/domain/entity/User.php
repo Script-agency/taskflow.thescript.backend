@@ -98,6 +98,10 @@ class User
     {
         return $this->patronymic;
     }
+    public function getUiName(): ?string
+    {
+        return $this->patronymic ? $this->name . " " . $this->patronymic : $this->surname . " " . $this->name;
+    }
     public function isOwner(): bool
     {
         return $this->isOwner;
