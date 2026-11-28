@@ -28,6 +28,8 @@ use modules\projects\domain\valueObject\ProjectId;
 use modules\projects\infrastructure\persistence\ProjectUserAR;
 use RuntimeException;
 use Yii;
+use yii\db\IntegrityException;
+use yii\helpers\Inflector;
 use yii\web\NotFoundHttpException;
 use OpenApi\Attributes as OA;
 
@@ -150,15 +152,7 @@ class ProjectRbacController extends BaseController
             return $this->error('A role can only be created below your own rank', 403);
         }
 
-        // Generate slug from name
-        $nameForSlug = trim((string)$request->name);
-        if (function_exists('iconv')) {
-            $transliterated = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $nameForSlug);
-            if ($transliterated !== false) {
-                $nameForSlug = $transliterated;
-            }
-        }
-        $slug = trim((string)preg_replace('/[^a-z0-9]+/', '-', strtolower($nameForSlug)), '-');
+        $slug = Inflector::slug((string)$request->name);
         if ($slug === '') {
             return $this->error('Role name must contain letters or digits', 422);
         }
@@ -176,6 +170,8 @@ class ProjectRbacController extends BaseController
                 false,
                 (int)$userId,
             );
+        } catch (IntegrityException $e) {
+            return $this->error('Role with this name already exists', 409);
         } catch (RuntimeException $e) {
             return $this->error($e->getMessage(), 403);
         }

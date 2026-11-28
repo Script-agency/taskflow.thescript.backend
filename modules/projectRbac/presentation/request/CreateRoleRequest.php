@@ -19,7 +19,7 @@ class CreateRoleRequest extends Model
         return [
             [['name', 'rank'], 'required'],
             ['name', 'string', 'length' => ['min' => 1, 'max' => 100]],
-            ['rank', 'integer', 'range' => [1, 999]],
+            ['rank', 'integer', 'min' => 1, 'max' => 999],
         ];
     }
 }
