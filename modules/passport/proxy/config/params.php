@@ -55,4 +55,16 @@ return [
             '/user-educations/{id}',
         ],
     ],
+    /**
+     * Endpoints, для которых разрешена передача файлов (multipart/form-data).
+     *
+     * Проверяется В ДОПОЛНЕНИЕ к `proxy`: endpoint должен присутствовать
+     * и в `proxy`, и в `multipart_proxy`.
+     */
+    'multipart_proxy' => [
+        'POST' => [
+            '/users/{id}/update',
+        ],
+        'PUT' => [],
+    ],
 ];

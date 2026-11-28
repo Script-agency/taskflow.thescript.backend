@@ -12,6 +12,7 @@ use yii\httpclient\Exception;
 use yii\web\BadRequestHttpException;
 use yii\web\Response;
 use OpenApi\Attributes as OA;
+use yii\web\UploadedFile;
 
 /**
  * Прокси-контроллер для запросов к центральному сервису Passport.
@@ -71,19 +72,26 @@ final class ProxyController extends BaseController
     )]
     #[OA\Post(
         path: '/passport/proxy/{url}',
-        description: 'Проксирует POST-запрос на центральный сервис Passport. Query-параметры и тело запроса пробрасываются как есть.',
+        description: 'Проксирует POST-запрос на центральный сервис Passport. Query-параметры и тело запроса пробрасываются как есть. Для endpoint\'ов из `multipart_proxy` поддерживается multipart/form-data с файлами.',
         summary: 'Проксировать POST-запрос в Passport',
         security: [
             ['bearerAuth' => []],
             ['accessTokenCookie' => []],
         ],
         requestBody: new OA\RequestBody(
-            description: 'Тело запроса пробрасывается в Passport как есть',
+            description: 'Тело запроса пробрасывается в Passport как есть. Для разрешённых endpoint\'ов поддерживается multipart/form-data.',
             required: false,
             content: [
                 new OA\MediaType(
                     mediaType: 'application/json',
                     schema: new OA\Schema(type: 'object'),
+                ),
+                new OA\MediaType(
+                    mediaType: 'multipart/form-data',
+                    schema: new OA\Schema(
+                        type: 'object',
+                        additionalProperties: true,
+                    ),
                 ),
             ],
         ),
@@ -254,10 +262,18 @@ final class ProxyController extends BaseController
             throw new BadRequestHttpException('Access token is missing');
         }
 
-        // 3. Строим целевой URL
+        // 3. Строим целевой URL и пробрасываем query-параметры (кроме служебного `url`)
         $targetUrl = rtrim($params['passport_url'], '/') . '/' . ltrim($url, '/');
 
-        // 4. Формируем прокси-запрос
+        $queryParams = Yii::$app->request->getQueryParams();
+        unset($queryParams['url']);
+        if ($queryParams !== []) {
+            $separator = str_contains($targetUrl, '?') ? '&' : '?';
+            $targetUrl .= $separator . http_build_query($queryParams);
+        }
+
+        // 4. Создаём прокси-запрос
+        /** @var Client $client */
         $client = Yii::$container->get(Client::class);
         $proxyRequest = $client->createRequest()
             ->setMethod($method)
@@ -265,38 +281,71 @@ final class ProxyController extends BaseController
             ->addHeaders(['Authorization' => 'Bearer ' . $accessToken])
             ->setOptions(['timeout' => 30]);
 
-        // Пробрасываем query-параметры (кроме служебного `url`)
-        $queryParams = Yii::$app->request->getQueryParams();
-        unset($queryParams['url']);
-        if ($queryParams !== []) {
-            $proxyRequest->setData($queryParams);
-        }
+        $contentType = (string)Yii::$app->request->getHeaders()->get('Content-Type', '');
+        $isMultipart = stripos($contentType, 'multipart/form-data') === 0;
 
-        // Пробрасываем тело запроса для POST/PUT/PATCH
-        $body = Yii::$app->request->getRawBody();
-        if ($body !== '' && $body !== null) {
-            $proxyRequest->setContent($body);
-            $contentType = Yii::$app->request->getHeaders()->get('Content-Type');
-            if ($contentType !== null) {
-                $proxyRequest->addHeaders(['Content-Type' => $contentType]);
+        if ($isMultipart) {
+            // 5a. Multipart разрешён только для whitelisted endpoint'ов
+            $multipartRoutes = $params['multipart_proxy'][$method] ?? [];
+            if (!$this->matchesAny($url, $multipartRoutes)) {
+                throw new BadRequestHttpException('Multipart proxying is not allowed for this endpoint');
+            }
+
+            // 5b. Добавляем текстовые поля.
+            //     Yii автоматически «помечает» запрос как multipart при вызове addFile().
+            $bodyParams = Yii::$app->request->getBodyParams();
+            if ($bodyParams !== []) {
+                $proxyRequest->setData($bodyParams);
+            }
+
+            // 5c. Добавляем файлы.
+            //     Для массивов (`files[]`) используем имена `files[0]`, `files[1]`, ...
+            //     чтобы избежать перезаписи, как рекомендовано в документации.
+            foreach (array_keys($_FILES) as $fieldName) {
+                $isArrayInput = is_array($_FILES[$fieldName]['name'] ?? null);
+
+                foreach (UploadedFile::getInstancesByName($fieldName) as $index => $uploadedFile) {
+                    if ($uploadedFile->getHasError()) {
+                        continue;
+                    }
+
+                    $targetFieldName = $isArrayInput ? "{$fieldName}[{$index}]" : $fieldName;
+
+                    $proxyRequest->addFile($targetFieldName, $uploadedFile->tempName, [
+                        'fileName'    => $uploadedFile->name,
+                        'contentType' => $uploadedFile->type !== '' ? $uploadedFile->type : 'application/octet-stream',
+                    ]);
+                }
+            }
+
+            // ВАЖНО: Content-Type для multipart НЕ добавляем вручную —
+            // Yii сгенерирует его сам с корректным boundary.
+        } else {
+            // 5d. Не-multipart: пробрасываем тело как есть
+            $body = Yii::$app->request->getRawBody();
+            if ($body !== '' && $body !== null) {
+                $proxyRequest->setContent($body);
+                if ($contentType !== '') {
+                    $proxyRequest->addHeaders(['Content-Type' => $contentType]);
+                }
             }
         }
 
-        // 5. Отправляем запрос
+        // 6. Отправляем запрос
         try {
             $response = $proxyRequest->send();
         } catch (Exception $e) {
             Yii::$app->response->statusCode = 502;
             Yii::$app->response->format = Response::FORMAT_JSON;
             Yii::$app->response->data = [
-                'error' => 'Proxy request failed',
+                'error'   => 'Proxy request failed',
                 'message' => $e->getMessage(),
             ];
 
             return Yii::$app->response;
         }
 
-        // 6. Возвращаем ответ в JSON
+        // 7. Возвращаем ответ в JSON
         Yii::$app->response->statusCode = $response->getStatusCode();
         Yii::$app->response->format = Response::FORMAT_JSON;
         Yii::$app->response->data = $response->getData();
@@ -311,10 +360,17 @@ final class ProxyController extends BaseController
      */
     private function isAllowed(string $method, string $url, array $allowedRoutes): bool
     {
-        $routes = $allowedRoutes[$method] ?? [];
+        return $this->matchesAny($url, $allowedRoutes[$method] ?? []);
+    }
+
+    /**
+     * @param string[] $patterns
+     */
+    private function matchesAny(string $url, array $patterns): bool
+    {
         $url = '/' . ltrim($url, '/');
 
-        foreach ($routes as $pattern) {
+        foreach ($patterns as $pattern) {
             if ($this->matchRoute($pattern, $url)) {
                 return true;
             }
